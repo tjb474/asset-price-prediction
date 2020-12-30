@@ -7,7 +7,10 @@ from functions_modelling import (
     model_selection,
     return_validation_metrics,
     return_validation_metrics_VC,
-    tune_weights_ms
+    tune_weights_ms,
+    filter_imp_vars,
+    return_final_metrics,
+    return_final_metrics_VC
 )
 from keras.models import Sequential
 from keras.layers import Dense
@@ -141,14 +144,6 @@ xgb_spx_optimal_models, xgb_spx_optimal_params = model_selection(
     n_iter=iterations,
     n_jobs=-1)
 
-# set up list of weights for the voting classifier
-weights = []
-
-for w1 in range(1, 4):
-    for w2 in range(1, 4):
-        for w3 in range(1, 4):
-            weights.append([w1, w2, w3])
-
 # VALIDATION METRICS FOR SPX
 # RF
 rf_spx_val_metrics_fs, rf_y_tests_val_fs, \
@@ -169,8 +164,8 @@ xgb_spx_val_metrics_fs, xgb_y_tests_val_fs, \
         sets_for_model_selection_spx)
 
 # Voting Classifier
-# tune the weights for the voting classifier for SPX
-optimal_weights_spx_val_fs = tune_weights_ms(
+# tune the weights for the voting classifier (VC) for SPX
+optimal_weights_spx = tune_weights_ms(
     train_test_sets=sets_spx,
     sets_model_selection=sets_for_model_selection_spx,
     rf_optimal=rf_spx_optimal_models,
@@ -182,11 +177,49 @@ vc_spx_val_metrics_fs, vc_spx_y_tests_val_fs, \
     vc_spx_y_preds_val_fs, vc_spx_y_scores_val_fs = return_validation_metrics_VC(
         sets_for_model_selection_spx,
         sets_spx,
-        optimal_weights_spx_val_fs,
+        optimal_weights_spx,
         rf_spx_optimal_models,
         mlp_spx_optimal_models,
         xgb_spx_optimal_models)
 
-# Carry optimal models forward, and for each sliding window retrain on
+# remove non-important features from train and test sets of SWs
+sets_spx = filter_imp_vars(sets=sets_spx, important_cols=indices_spx)
+
+# get test set performance across the sliding windows by carrying
+# optimal models forward, and for each sliding window retrain on
 # original 70%, and assess performance on test set (30%)
 
+# RF
+rf_spx_all_metrics_fs, rf_spx_y_tests_fs, \
+    rf_spx_y_preds_fs, rf_spx_y_scores_fs = return_final_metrics(
+        optimal_models=rf_spx_optimal_models,
+        train_test_sets=sets_spx)
+
+# MLP
+mlp_spx_all_metrics_fs, mlp_spx_y_tests_fs, \
+    mlp_spx_y_preds_fs, mlp_spx_y_scores_fs = return_final_metrics(
+        optimal_models=mlp_spx_optimal_models,
+        train_test_sets=sets_spx)
+
+# XGB
+xgb_spx_all_metrics_fs, xgb_spx_y_tests_fs, \
+    xgb_spx_y_preds_fs, xgb_spx_y_scores_fs = return_final_metrics(
+        optimal_models=xgb_spx_optimal_models,
+        train_test_sets=sets_spx)
+
+# VC
+vc_spx_all_metrics_fs, vc_spx_y_tests_fs, \
+    vc_spx_y_preds_fs, vc_spx_y_scores_fs = return_final_metrics_VC(
+        optimal_weights=optimal_weights_spx,
+        train_test_sets=sets_spx,
+        rf_optimal=rf_spx_optimal_models,
+        mlp_optimal=mlp_spx_optimal_models,
+        xgb_optimal=xgb_spx_optimal_models)
+
+# save the models
+filename = 'rf_spx_optimal_models_fs.sav'
+pickle.dump(rf_spx_optimal_models, open(filename, 'wb'))
+filename = 'xgb_spx_optimal_models_fs.sav'
+pickle.dump(xgb_spx_optimal_models, open(filename, 'wb'))
+filename = 'vc_spx_optimal_models_fs.sav'
+pickle.dump(vc_spx_optimal_models, open(filename, 'wb'))

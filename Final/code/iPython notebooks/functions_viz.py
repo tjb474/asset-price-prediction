@@ -173,3 +173,53 @@ def plot_auc(rf_metrics, mlp_metrics, xgb_metrics, vc_metrics):
     plt.xlabel("Test Set / Sliding Window", fontsize=15)
     plt.xticks(fontsize=14)
     plt.yticks(fontsize=14, rotation=0)
+
+
+def plot_ROC(metrics, asset_label, clf_label):
+    """
+    Plots an ROC curve for each sliding window.
+
+    Inputs:
+        metrics (dict): the performance metrics for a given model. i.e. the
+            output from the function return_final_metrics().
+        asset_label (str): Name of the asset performance being visualised.
+            E.g. 'S&P500'
+        clf_labels (str): Name of the classifier performance being visualised.
+            E.g. 'Random Forest'
+
+    Returns:
+        A matplotlib figure displaying the ROC curve of the asset/classifier
+        combination specified in the inputs.
+    """
+    plt.figure(1, figsize=(8, 8))
+    plt.xlabel('false positive rate')
+    plt.ylabel('true positive rate')
+    plt.title('ROC curve')
+    plt.plot(metrics['metrics_sw0']['fpr'],
+             metrics['metrics_sw0']['tpr'],
+             label='Optimal ' + clf_label +
+             ' - Sliding window 1: ' +
+             str(float(round(metrics['metrics_sw0']['auc'], 3))))
+
+    plt.plot(metrics['metrics_sw1']['fpr'],
+             metrics['metrics_sw1']['tpr'],
+             label='Optimal ' + clf_label +
+             ' - Sliding window 2: ' +
+             str(float(round(metrics['metrics_sw1']['auc'], 3))))
+
+    plt.plot(metrics['metrics_sw2']['fpr'],
+             metrics['metrics_sw2']['tpr'],
+             label='Optimal ' +
+             clf_label + ' - Sliding window 3: ' +
+             str(float(round(metrics['metrics_sw2']['auc'], 3))))
+
+    plt.plot(metrics['metrics_sw3']['fpr'],
+             metrics['metrics_sw3']['tpr'],
+             label='Optimal ' + clf_label +
+             ' - Sliding window 4: ' +
+             str(float(round(metrics['metrics_sw3']['auc'], 3))))
+
+    plt.legend(loc=4, prop={'size': 11})
+    plt.plot([0, 1], [0, 1], color='black')
+    plt.title(clf_label + " (" + asset_label + ")")
+    plt.show()

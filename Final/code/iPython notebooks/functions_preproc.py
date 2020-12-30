@@ -1,9 +1,5 @@
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-from functools import reduce
-import datetime
 
 
 def interpolate_missing(data):
@@ -36,7 +32,7 @@ def drop_unwanted_cols(data):
          'Conc_Gross_LE_8_TDR_Short_Other', 'Conc_Net_LE_4_TDR_Long_Other',
          'Conc_Net_LE_4_TDR_Short_Other', 'Conc_Net_LE_8_TDR_Long_Other',
          'Conc_Net_LE_8_TDR_Short_Other'],
-        axis= 1)
+        axis=1)
     return df2
 
 
@@ -130,7 +126,7 @@ def refined_cot_data(data):
     return df
 
 
-    def create_returns_variables(df, cols, period_weeks, string_append):
+def create_returns_variables(df, cols, period_weeks, string_append):
     """
     Keyword arguments
     :cols_to_transform: A list of columns on which to calculate
@@ -150,7 +146,7 @@ def refined_cot_data(data):
     return df
 
 
-    def create_binary_variables(df, cols_to_binarise, ma_period=50):
+def create_binary_variables(df, cols_to_binarise, ma_period=50):
     """
     Creates binary variables that indicate whether a
     features' values are above their moving averages.
@@ -487,7 +483,7 @@ def create_technical_indicators(path):
     return technical_indicators_df
 
 
-    def ema_binary(data, column='Close', ema_column='ema_bin'):
+def ema_binary(data, column='Close', ema_column='ema_bin'):
     """
     Creates a binary variable that indicates whether EMA is
     higher or lower than the previous reading.

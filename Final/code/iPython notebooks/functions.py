@@ -425,7 +425,8 @@ def create_indicators(data):
     df3 = rsi(df2, periods=14, close_col='Close')
     df4 = williams_ad(df3, high_col='High', low_col='Low', close_col='Close')
     df5 = williams_r(df4, periods=14, high_col='High', low_col='Low', close_col='Close')
-    df6 = average_true_range(df5, trend_periods=14, open_col='Open', high_col='High', low_col='Low', close_col='Close', drop_tr = True)
+    df6 = average_true_range(df5, trend_periods=14, open_col='Open', high_col='High',
+                             low_col='Low', close_col='Close', drop_tr = True)
     df7 = bollinger_bands(df6, trend_periods=20, close_col='Close')
     df8 = momentum(df7, period = 9, close_col= 'Close')
     df9 = pd.concat(

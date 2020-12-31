@@ -18,6 +18,7 @@ from keras.layers import Dropout
 from keras.wrappers.scikit_learn import KerasClassifier
 from keras.optimizers import SGD
 from keras.backend import set_session
+import pickle
 from scipy import stats
 from scipy.stats import randint
 from scipy.stats import uniform
@@ -28,12 +29,16 @@ from numpy import random
 import tensorflow as tf
 from xgboost.sklearn import XGBClassifier
 
+# import the data from preprocessing
+X_path = 'X_spx.sav'
+y_path = 'X_spx.sav'
+X_spx = pickle.load(open(X_path, 'rb'))
+y_spx = pickle.load(open(y_path, 'rb'))
+
 # 3 splits = 4 folds/sliding windows
 sets_spx = walkforward_split(
-    X_spx,
-    y_spx,
-    train_splits=3,
-    test_splits=1)
+    X=X_spx,
+    y=y_spx)
 
 # take each sliding window training set and split it
 # into a train and validation set for the purpose of model selection
@@ -43,13 +48,14 @@ sets_for_model_selection_spx = model_selection_sets(sets_spx)
 threshold_settings = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006,
                       0.007, 0.008, 0.009, 0.01, 0.011]
 
+# determine optimal threshold
 min_idx_spx, errors_spx = optimal_threshold(
     threshold_values=threshold_settings,
     train_test_sets=sets_spx,
     sets_model_selection=sets_for_model_selection_spx,
     original_df=X_spx)
 
-# extract importnat features for each asset class and sliding window
+# use optimal thresh val to keep only important feats for each sliding window
 indices_spx = extract_imp_features(
     X=X_spx,
     sets=sets_spx,
@@ -57,7 +63,7 @@ indices_spx = extract_imp_features(
     threshold_settings=threshold_settings,
     opt_thresh_idx=min_idx_spx)
 
-# configure the tensorflow session
+# configure the tensorflow session for mlp model
 config = tf.compat.v1.ConfigProto(
     allow_soft_placement=True,
     gpu_options=tf.compat.v1.GPUOptions(

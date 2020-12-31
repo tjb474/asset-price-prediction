@@ -184,7 +184,7 @@ def return_walkforward_indices(X):
             E.g. [array([5, 6, 7]), array([10, 11, 12])]
 
     """
-    # set up the generator function to split the dataset
+    # set up the generator function to split the dataset into 4 windows
     tscv = TimeSeriesSplitImproved()
     split = tscv.split(X, fixed_length=True, train_splits=2, test_splits=1)
 
@@ -349,8 +349,8 @@ def extract_imp_feats(X_train, X_val, y_train, threshold_value, original):
 def optimal_threshold(threshold_values, train_test_sets,
                       sets_model_selection, original_df):
     """
-    Determines the optimal threshold by selecting that which minimises
-    the Random Forest out-of-bag error for the validation set.
+    Determines the optimal 'importance' threshold by selecting that which
+    minimises the Random Forest out-of-bag error for the validation set.
 
     Parameters
     ----------
@@ -404,6 +404,7 @@ def optimal_threshold(threshold_values, train_test_sets,
             # evaluate performance of these variables using a standard RF
             rf = RandomForestClassifier(n_estimators=1000, oob_score=True,
                                         n_jobs=-1)
+
             # X_train is now the reduced dataframe (only imp. vars)
             rf.fit(X_train, y_train)
             oob_error = 1 - rf.oob_score_

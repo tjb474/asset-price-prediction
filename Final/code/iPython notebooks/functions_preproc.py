@@ -12,22 +12,23 @@ def drop_unwanted_cols(data):
     Drop all the unwanted columns that are read in from the CoT spreadsheet.
     """
     df2 = data.drop(
-        ['Contract_Units', 'As_of_Date_In_Form_YYMMDD', 'CFTC_Contract_Market_Code',
-         'CFTC_Region_Code', 'CFTC_Commodity_Code','CFTC_Market_Code',
-         'Open_Interest_Other', 'NonComm_Positions_Long_Other',
-         'NonComm_Positions_Short_Other', 'NonComm_Positions_Spread_Other',
-         'Comm_Positions_Long_Other', 'Comm_Positions_Short_Other',
+        ['Contract_Units', 'As_of_Date_In_Form_YYMMDD',
+         'CFTC_Contract_Market_Code', 'CFTC_Region_Code',
+         'CFTC_Commodity_Code', 'CFTC_Market_Code', 'Open_Interest_Other',
+         'NonComm_Positions_Long_Other', 'NonComm_Positions_Short_Other',
+         'NonComm_Positions_Spread_Other', 'Comm_Positions_Long_Other',
+         'Comm_Positions_Short_Other',
          'Tot_Rept_Positions_Long_Other', 'Tot_Rept_Positions_Short_Other',
          'NonRept_Positions_Long_Other', 'NonRept_Positions_Short_Other',
          'Pct_of_OI_NonComm_Long_Other', 'Pct_of_OI_NonComm_Short_Other',
-         'Pct_of_OI_NonComm_Spread_Other','Pct_of_OI_Comm_Long_Other',
-         'Pct_of_OI_Comm_Short_Other','Pct_of_OI_Tot_Rept_Long_Other',
-         'Pct_of_OI_Tot_Rept_Short_Other','Pct_of_OI_NonRept_Long_Other',
+         'Pct_of_OI_NonComm_Spread_Other', 'Pct_of_OI_Comm_Long_Other',
+         'Pct_of_OI_Comm_Short_Other', 'Pct_of_OI_Tot_Rept_Long_Other',
+         'Pct_of_OI_Tot_Rept_Short_Other', 'Pct_of_OI_NonRept_Long_Other',
          'Pct_of_OI_NonRept_Short_Other', 'Traders_Tot_Other',
          'Traders_NonComm_Long_Other', 'Traders_NonComm_Short_Other',
          'Traders_NonComm_Spread_Other', 'Traders_Comm_Long_Other',
-         'Traders_Comm_Short_Other','Traders_Tot_Rept_Long_Other',
-         'Traders_Tot_Rept_Short_Other','Conc_Gross_LE_4_TDR_Long_Other',
+         'Traders_Comm_Short_Other', 'Traders_Tot_Rept_Long_Other',
+         'Traders_Tot_Rept_Short_Other', 'Conc_Gross_LE_4_TDR_Long_Other',
          'Conc_Gross_LE_4_TDR_Short_Other', 'Conc_Gross_LE_8_TDR_Long_Other',
          'Conc_Gross_LE_8_TDR_Short_Other', 'Conc_Net_LE_4_TDR_Long_Other',
          'Conc_Net_LE_4_TDR_Short_Other', 'Conc_Net_LE_8_TDR_Long_Other',
@@ -39,12 +40,12 @@ def drop_unwanted_cols(data):
 def smoothSeries(var, spanLength):
     """
     Exponential smoothing ("smoothSeries()")
-    Params: spanLength: smoothing period 
+    Params: spanLength: smoothing period
     """
-    fwd = var.ewm(span = 10).mean()
-    bwd = var[::-1].ewm(span = 10).mean()
+    fwd = var.ewm(span=10).mean()
+    bwd = var[::-1].ewm(span=10).mean()
     c = np.vstack((fwd, bwd[::-1]))
-    c = np.mean(c, axis = 0)
+    c = np.mean(c, axis=0)
     return c
 
 
@@ -55,7 +56,7 @@ def generate_cot_data(data):
     """
     df1 = interpolate_missing(data)
     df2 = drop_unwanted_cols(df1)
-    
+
     # create a df of just floats
     df_floats = df2.select_dtypes(include=['float64'])
 
@@ -67,8 +68,7 @@ def generate_cot_data(data):
     df_ = pd.DataFrame(index=index, columns=column_names)
 
     for i in range(df_floats.shape[1]):
-        df_.iloc[:,i] = smoothSeries(df_floats.iloc[:,i], 25)
-        #df_.iloc[:,i] = var
+        df_.iloc[:, i] = smoothSeries(df_floats.iloc[:, i], 25)
     return df_
 
 
@@ -76,21 +76,28 @@ def refined_cot_data(data):
     """
     Perform feature generation on the CoT data.
     Input: CoT dataframe generated from generate_cot_data().
-    
+
     Net positioning: long positions minus short positions
     Net_positioning_1w_change: 1-week change in net positioning
     """
     net_positioning = {
-        'net_comm' : (data.Comm_Positions_Long_All - data.Comm_Positions_Short_All),
-        'net_noncomm' : (data.NonComm_Positions_Long_All - data.NonComm_Positions_Short_All),
-        'net_nonrep' : (data.NonRept_Positions_Long_All - data.NonRept_Positions_Short_All)
+        'net_comm':
+        (data.Comm_Positions_Long_All - data.Comm_Positions_Short_All),
+        'net_noncomm':
+        (data.NonComm_Positions_Long_All - data.NonComm_Positions_Short_All),
+        'net_nonrep':
+        (data.NonRept_Positions_Long_All - data.NonRept_Positions_Short_All)
     }
-    
+
     net_positioning_1w_change = {
-        'net_comm_chg_1w' : net_positioning['net_comm'] - net_positioning['net_comm'].shift(1),
-        'net_noncomm_chg_1w' : net_positioning['net_noncomm'] - net_positioning['net_noncomm'].shift(1),
-        'net_nonrep_chg_1w' : net_positioning['net_nonrep']  - net_positioning['net_nonrep'].shift(1)}
-    
+        'net_comm_chg_1w':
+        net_positioning['net_comm'] - net_positioning['net_comm'].shift(1),
+        'net_noncomm_chg_1w':
+        net_positioning['net_noncomm'] - net_positioning['net_noncomm'].shift(1),
+        'net_nonrep_chg_1w':
+        net_positioning['net_nonrep'] - net_positioning['net_nonrep'].shift(1)
+    }
+
     net_positioning_1m_change = {
         'net_comm_chg_1m' : net_positioning['net_comm'] - net_positioning['net_comm'].shift(4),
         'net_noncomm_chg_1m' : net_positioning['net_noncomm'] - net_positioning['net_noncomm'].shift(4),
@@ -620,13 +627,13 @@ def create_target_variable(path, weeks=4):
     
     if "esa" in path:
         print("found esa in path")
-        df = df.iloc[:-3,:] # cut the last 3 rows to match up with the inputs
+        df = df.iloc[:-3, :] # cut the last 3 rows to match up with the inputs
     elif "fva" in path:
         print("found fva in path")
-        df= df.iloc[:-5,:] # cut the last 5 rows to match up with the inputs
+        df= df.iloc[:-5, :] # cut the last 5 rows to match up with the inputs
     else:
         print("found dxa in path")
-        df = df.iloc[:-3,:] # cut the last 3 rows to match up with the inputs
+        df = df.iloc[:-3, :] # cut the last 3 rows to match up with the inputs
         
     # generate binary target variable 'movement'
     weeks = 4

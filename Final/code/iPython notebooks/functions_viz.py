@@ -59,12 +59,14 @@ def plot_imp_vars(df, indices, asset_label):
     Plots frequency at which a variable was deemed important
     over the N sliding windows.
 
-    inputs:
+    Parameters
+    ----------
         df (df): input dataframe for asset class in question
         indices (dict of dicts): contains the important variable
             indices determined by extract_imp_features().
 
-    returns:
+    Returns
+    -------
         Bar chart displaying the number of sliding windows
         over which each variable was deemed to be important.
     """
@@ -179,7 +181,8 @@ def plot_ROC(metrics, asset_label, clf_label):
     """
     Plots an ROC curve for each sliding window.
 
-    Inputs:
+    Parameters
+    ----------
         metrics (dict): the performance metrics for a given model. i.e. the
             output from the function return_final_metrics().
         asset_label (str): Name of the asset performance being visualised.
@@ -187,7 +190,8 @@ def plot_ROC(metrics, asset_label, clf_label):
         clf_labels (str): Name of the classifier performance being visualised.
             E.g. 'Random Forest'
 
-    Returns:
+    Returns
+    -------
         A matplotlib figure displaying the ROC curve of the asset/classifier
         combination specified in the inputs.
     """

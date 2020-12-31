@@ -1,16 +1,13 @@
 
-from datetime import datetime
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import Dropout
 from keras.wrappers.scikit_learn import KerasClassifier
 from keras.optimizers import SGD
 from keras import backend as K
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pickle
-import seaborn as sns
 from sklearn import metrics
 from sklearn.metrics import (
     confusion_matrix,
@@ -19,29 +16,36 @@ from sklearn.metrics import (
 from sklearn.model_selection import (
     cross_val_score,
     RandomizedSearchCV,
-    StratifiedShuffleSplit,
     PredefinedSplit,
     TimeSeriesSplit
 )
 from sklearn.preprocessing import StandardScaler
-from sklearn.externals import joblib
 from sklearn.utils import indexable
 from sklearn.utils.validation import _num_samples
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.ensemble import VotingClassifier
 from sklearn.feature_selection import SelectFromModel
-from string import ascii_lowercase
 import tensorflow as tf
-from xgboost.sklearn import XGBClassifier
 
 
 class TimeSeriesSplitImproved(TimeSeriesSplit):
-    """Time Series cross-validator
+    """
+    This is a modified version of sklearn's TimeSeriesSplit.
     Provides train/test indices to split time series data samples
     that are observed at fixed time intervals, in train/test sets.
-    In each split, test indices must be higher than before, and thus shuffling
-    in cross validator is inappropriate.
+
+    There are 2 modifications to this class.
+    1. In each split, test indices must be higher than before,
+       and thus shuffling in cross validator is inappropriate.
+       I.e. there is no shuffling of samples.
+    2. There is now the ability to produce splits of fixed length.
+       Previously, the only option was for successive training sets
+       to be supersets of those that come before them. This was
+       not suitable for addressing potential concept drift and
+       therefore the argument 'fixed_length' was added to allow
+       training sets that step forward.
+
     This cross-validation object is a variation of :class:`KFold`.
     In the kth split, it returns first k folds as train set and the
     (k+1)th fold as test set.
@@ -96,7 +100,8 @@ class TimeSeriesSplitImproved(TimeSeriesSplit):
 
     def split(self, X, y=None, groups=None, fixed_length=False,
               train_splits=1, test_splits=1):
-        """Generate indices to split data into training and test set.
+        """
+        Generate indices to split data into training and test set.
         Parameters
         ----------
         X : array-like, shape (n_samples, n_features)
@@ -106,12 +111,13 @@ class TimeSeriesSplitImproved(TimeSeriesSplit):
             Always ignored, exists for compatibility.
         groups : array-like, with shape (n_samples,), optional
             Always ignored, exists for compatibility.
-        fixed_length : bool, hether training sets should always have
+        fixed_length : bool, whether training sets should always have
             common length
         train_splits : positive int, for the minimum number of
             splits to include in training sets
         test_splits : positive int, for the number of splits to
             include in the test set
+
         Returns
         -------
         train : ndarray
@@ -158,13 +164,29 @@ class TimeSeriesSplitImproved(TimeSeriesSplit):
                        indices[test_start:test_start + test_size])
 
 
-def return_walkforward_indices(X, folds=5):
+def return_walkforward_indices(X):
     """
     For the train and test sets, this function returns the corresponding
     indices for each separate sliding window
+
+    Parameters
+    ----------
+        X (df): the original X dataframe containing all features related
+            to the asset in question
+
+    Returns
+    -------
+        train_indices (list of arrays): arrays containing indices of each
+            sliding window training samples
+            E.g. [array([0, 1, 2, 3, 4]), array([5, 6, 7, 8, 9])]
+        test_indices (list): arrays containing indices of each
+            sliding window test samples
+            E.g. [array([5, 6, 7]), array([10, 11, 12])]
+
     """
-    tscv = TimeSeriesSplitImproved(folds)
-    split = tscv.split(X, fixed_length=True, train_splits=2)
+    # set up the generator function to split the dataset
+    tscv = TimeSeriesSplitImproved()
+    split = tscv.split(X, fixed_length=True, train_splits=2, test_splits=1)
 
     train_indices = []
     test_indices = []
@@ -176,9 +198,11 @@ def return_walkforward_indices(X, folds=5):
     return train_indices, test_indices
 
 
-def walkforward_split(X, y, train_splits, test_splits):
-    """This function uses the train and test indices of each sliding window
-    to slice the dataframe, creating n separate sliding windows.
+def walkforward_split(X, y):
+    """
+    This function uses the train and test indices of each sliding window
+    - returned by return_walkforward_indices() - to slice the dataframe,
+    creating n separate sliding windows.
 
     For each sliding window, there is now X_train, y_train, X_test, y_test.
     e.g. X_train_0, y_train_0, X_test_0, y_test_0 is for the first sliding
@@ -188,9 +212,14 @@ def walkforward_split(X, y, train_splits, test_splits):
     is fit on each sliding window's training set, rather than the training
     set as a whole.
 
-    Inputs:
+    Parameters
+    ----------
+        X (df): the original X dataframe containing all features related
+            to the asset in question
+        y (Series): the original labels that correspond with X
 
-    Returns:
+    Returns
+    -------
         sets (dict of matrices): dict containing the train and test matrices
             for each sliding window.
     """
@@ -198,8 +227,10 @@ def walkforward_split(X, y, train_splits, test_splits):
     sets = {}
     scaler = StandardScaler()
 
+    num_windows = len(train_indices)
+
     # for each sliding window (which equals the sum of train and test splits)
-    for i in np.arange(train_splits + test_splits):
+    for i in np.arange(num_windows):
 
         # create sliding window 'i' (containing train and test)
         set = {'X_train_'+str(i): pd.DataFrame(X.values[train_indices[i]]),
@@ -227,11 +258,34 @@ def walkforward_split(X, y, train_splits, test_splits):
 
 
 def model_selection_sets(windows, test_size=0.3):
-    """This function takes each sliding window training set and breaks
+    """
+    This function takes each sliding window training set and breaks
     it into a train and validation set for the purpose of model selection.
 
     Again, samples are not shuffled. It is a simple split to keep
-    sequential ordering."""
+    sequential ordering.
+
+    Parameters
+    ----------
+        windows (dict of matrices): the dictionary containing the sets
+            corresponding with each sliding window that is produced by
+            walkforward_split().
+        test_size (float): a float between 0 and 1 that determines the
+            size of the proportion of samples to be assigned to the
+            validation set.
+
+    Returns
+    -------
+        sets_ms (dict of matrices): dict containing the train and validation
+            set matrices for each sliding window, to be used for model
+            selection.
+            E.g. dict_keys(
+                ['X_train_0', 'X_val_0', 'y_train_0', 'y_val_0', # SW0 MS sets
+                 'X_train_1', 'X_val_1', 'y_train_1', 'y_val_1', # SW1 MS sets
+                 .....
+                 'X_train_N', 'X_val_N', 'y_train_N', 'y_val_N', # SWN MS sets
+                 ])
+    """
 
     sets_ms = {}  # ms = model selection
 
@@ -257,13 +311,15 @@ def extract_imp_feats(X_train, X_val, y_train, threshold_value, original):
     Runs a random forest on the train and validation set,
     then extracts the important features using SelectFromModel() function.
 
-    Inputs:
+    Parameters
+    ----------
         threshold_value: the threshold above which a variable is deemed
             'important'
         original: the original X dataframe, from which feature names can be
             retrieved.
 
-    Returns:
+    Returns
+    -------
         strong_features: indices of important features
         X_train_imp: X_train dataframe consisting of only important variables
         X_val_imp: X_val dataframe consisting of only important variables
@@ -296,7 +352,8 @@ def optimal_threshold(threshold_values, train_test_sets,
     Determines the optimal threshold by selecting that which minimises
     the Random Forest out-of-bag error for the validation set.
 
-    Inputs:
+    Parameters
+    ----------
         threshold_values (list): an array of thresholds
             e.g. [0.005, ..., 0.009]
         train_test_sets (dict of matrices): dict containing the train and test
@@ -306,7 +363,8 @@ def optimal_threshold(threshold_values, train_test_sets,
         original_df: the original X dataframe, from which feature names can be
             retrieved
 
-    Returns:
+    Returns
+    -------
         min_idx: index of threshold that minimises oob error
         df_errors: a dataframe containing errors for each sliding window and
             threshold setting
@@ -377,17 +435,20 @@ def extract_imp_features(X, sets, sets_ms, threshold_settings, opt_thresh_idx):
 
     Pass the dicts associated with each sliding window to extract_imp_feats().
 
-    Inputs:
+    Parameters
+    ----------
         X (df): the original X dataframe, from which feature names can be
-        retreived sets (dict of dfs): Dict containing the train and test sets
-        associated with each sliding window. Generated by walkforward_split().
-
+            retreived
+        sets (dict of dfs): Dict containing the train and test sets
+            associated with each sliding window. Generated by
+            walkforward_split().
         sets_ms (dict of matrices): Dict containing the train and validation
             indices for a given asset.
         threshold_settings (list): list of thresholds e.g. [0.005, ..., 0.009].
         opt_thresh_idx (int): the index of threshold settings found to be
             optimal via optimal_threshold().
-    Returns:
+    Returns
+    -------
         indices (dict): a dictionary containing the lists of feature indices
             deemed to be important for each sliding window.
     """
@@ -424,6 +485,24 @@ def extract_imp_features(X, sets, sets_ms, threshold_settings, opt_thresh_idx):
 def create_model(optimizer='adam', neurons=1, learn_rate=0.01,
                  momentum=0, kernel_initializer='normal',
                  dropout_rate=0.0, input_dim=None):
+    """
+    Creates a simple Keras Sequential model that will be passed to
+    KerasClassifier object.
+
+    Parameters
+    ----------
+        optimizer (str): required to compile a Keras model. See
+            https://www.tensorflow.org/api_docs/python/tf/keras/optimizers
+            for an exhaustive list of optimizers.
+        neurons (int):
+        learn_rate (float): learning rate of chosen optimizer.
+        dropout_rate (float): probability that a random node will be dropped
+            in each weight update cycle.
+        input_dim (int): number of features in dataset
+    Returns
+    -------
+
+    """
     with tf.device("/device:GPU:0"):
         # create model
         model = Sequential()
@@ -444,7 +523,8 @@ def model_selection(model, train_test_sets, sets_model_selection,
     """
     Performs model selection using random grid search without cross validation.
 
-    Inputs:
+    Parameters
+    ----------
         model (obj): enter model such as RandomForestClassifier() (default)
         train_test_sets (dict of matrices): dict containing the train and test
             matrices for each sliding window.
@@ -458,7 +538,8 @@ def model_selection(model, train_test_sets, sets_model_selection,
             multilayer perceptron. If True, prompts the building of a Keras
             classifier with the appropriate input dimensions as determined via
             feature selection.
-    Returns:
+    Returns
+    -------
         optimal_models (dict): a dict containing optimal models for each
             sliding window
         optimal_params (dict): a dict containing optimal hyper-parameters for
@@ -560,13 +641,15 @@ def return_validation_metrics(optimal_models, train_test_sets):
     Models are evaluated on the validation sets if passed train/validation
     sets. E.g. 'sets_for_model_selection_spx'
 
-    Inputs:
+    Parameters
+    ----------
         optimal_models (dict): the optimal models for the respective
             classifier/asset combination
         train_test_sets (dict of matrices): dict containing the train and test
             matrices for each sliding window.
 
-    Outputs:
+    Returns
+    -------
         all_metrics (dict of dicts): A dictionary of dictionaries containing
             performance measures
                 E.g. metrics_0 : acc, auc... , metrics_1 : auc, acc... ,
@@ -658,7 +741,8 @@ def return_validation_metrics_VC(sets_model_selection, train_test_sets,
 
     Pass in the optimal models for the respective classifier/asset combination.
 
-    Inputs:
+    Parameters
+    ----------
         sets_model_selection (dict): dict containing the train and validation
             sets for each sliding window.
         train_test_sets (sets):
@@ -667,9 +751,17 @@ def return_validation_metrics_VC(sets_model_selection, train_test_sets,
         [rf/mlp/xgb]_optimal: optimal models for a given asset
             E.g. 'rf_spx_optimal_models'
 
-    Output: A dictionary of dictionaries containing performance measures
-        E.g. metrics_0 : acc, auc... , metrics_1 : auc, acc... ,
-        metrics_2 : auc, acc...
+    Returns
+    -------
+        all_metrics (dict of dicts): A dictionary of dictionaries containing
+            performance measures
+                E.g. metrics_0 : acc, auc... , metrics_1 : auc, acc... ,
+                     metrics_2 : auc, acc...
+        y_tests (dict of dicts): A dictionary of dictionaries containing test
+            set values
+        y_preds (dict of dicts): A dictionary of dictionaries containing preds
+        y_scores (dict of dicts): A dictionary of dictionaries containing
+            scores
     """
     all_metrics = {}
     y_tests = {}
@@ -764,7 +856,8 @@ def tune_weights_ms(train_test_sets, sets_model_selection,
     'mlp_spx_optimal_models', and 'xgb_spx_optimal_models'. These
     dictionaries are created using model_selection().
 
-    Inputs:
+    Parameters
+    ----------
         train_test_sets: the dictionary containing the train/test split
             for each window E.g. 'set_spx'
         sets_model_selection: dict containing the train and validation
@@ -773,7 +866,8 @@ def tune_weights_ms(train_test_sets, sets_model_selection,
         [rf/mlp/xgb]_optimal: optimal models for a given asset
             E.g. 'rf_spx_optimal_models'
 
-    Outputs:
+    Returns
+    -------
         optimal weights: a dictionary that contains four vectors of optimal
             weights, one for each sliding window
     """
@@ -822,10 +916,7 @@ def tune_weights_ms(train_test_sets, sets_model_selection,
                         n_jobs=1)
 
                     eclf = eclf.fit(X_train, y_train.values.ravel())
-
                     y_pred = eclf.predict(X_val)
-                    y_score = eclf.predict_proba(X_val)[:, 1]
-
                     acc = metrics.accuracy_score(y_val, y_pred)  # accuracy
                     acc_all.append(acc)
 
@@ -847,38 +938,40 @@ def filter_imp_vars(sets, important_cols):
     When passed a dict containing X_train and X_test sets
     of the sliding windows, this will remove features that
     aren't important, as determined by extract_imp_features().
-    
-    Inputs:
+
+    Parameters
+    ----------
         sets (dict of matrices): dict containing the train
-            and test matrices for each sliding window. 
+            and test matrices for each sliding window.
             These sets are generated by walkforward_split().
-        important_cols (dict): a dictionary containing the 
+        important_cols (dict): a dictionary containing the
             lists of feature indices deemed to be important
             for each sliding window.
-            
-    Outputs:
+
+    Returns
+    -------
         sets_filtered (dict of matrices): dict containing the
             train and test matrices for each sliding window,
             with only important features included.
     """
-        
+
     sets_for_filtering = []
-    
+
     # get X_train and X_test for each sliding window
     for set in np.arange(0, len(sets), 2):
         sets_for_filtering.append(list(sets.keys())[set])
-        
+
     # cycle through the X_train and X_tests,
     # leaving the important variables for given sliding window.
     for set in enumerate(sets_for_filtering):
         # take the number from the end of the set's name e.g. "X_train_0" = 0
         # this tells us which key from dict "indices" to use
         indicie_to_use = int(str(set[1])[-1])
-        
+
         # access only important variables for sliding window
         sets[set[1]] = sets[set[1]]\
             .iloc[:, list(important_cols.values())[indicie_to_use]]
-     
+
     return sets
 
 
@@ -886,87 +979,97 @@ def return_final_metrics(optimal_models, train_test_sets, mlp=None):
     """
     Returns the performance measure(s) of optimal models on their
     respective sliding window. Models are evaluated on the test sets.
-    
-    Input:
+
+    Parameters
+    ----------
         optimal_models (dict of objects): dict containing the optimal
             models for the respective classifier/asset combination.
         train_test_sets (dict of matrices): dict containing the train
             and test matrices for each sliding window.
-            
-    Output: A dictionary of dictionaries containing performance measures 
-    (e.g. metrics_0 : acc, auc... , metrics_1 : auc, acc... , metrics_2 : auc, acc...)
+
+    Returns
+    -------
+        all_metrics (dict of dicts): A dictionary of dictionaries containing
+            performance measures
+                E.g. metrics_0 : acc, auc... , metrics_1 : auc, acc... ,
+                     metrics_2 : auc, acc...
+        y_tests (dict of dicts): A dictionary of dictionaries containing test
+            set values
+        y_preds (dict of dicts): A dictionary of dictionaries containing preds
+        y_scores (dict of dicts): A dictionary of dictionaries containing
+            scores
     """
-    
+
     all_metrics = {}
     y_tests = {}
     y_preds = {}
     y_scores = {}
-    
+
     # for each sliding window
     for i in np.arange(0, len(train_test_sets), 4):
-        
+
         # define the relevant training and test sets, and model
         X_train = list(train_test_sets.values())[i]
         X_test = list(train_test_sets.values())[i+2]
         y_train = list(train_test_sets.values())[i+1]
         y_test = list(train_test_sets.values())[i+3]
-        
+
         # normalise the data
+        scaler = StandardScaler()
         scaler.fit(X_train)
         X_train = scaler.transform(X_train)
         X_test = scaler.transform(X_test)
-        
-        input_dims = X_train.shape[1]
+
         clf_number = int(str(list(train_test_sets.keys())[i])[8])
-        
+
         # extract the relevant model from optimal model dictionary
         clf = list(optimal_models.values())[clf_number]
 
         # fit the model
         clf.fit(X_train, y_train.values.ravel())
-        
+
         # make predictions
         y_pred = clf.predict(X_test)
-        y_score = clf.predict_proba(X_test)[:,1]
+        y_score = clf.predict_proba(X_test)[:, 1]
 
         # output performance metrics
         fpr, tpr, thresholds = metrics.roc_curve(
             y_test,
             y_score,
             drop_intermediate=False,
-            pos_label = 1)
-        acc = metrics.accuracy_score(y_test, y_pred) # accuracy
+            pos_label=1)
+        acc = metrics.accuracy_score(y_test, y_pred)  # accuracy
         auc = metrics.auc(fpr, tpr)
         precision, recall, thresholds = metrics.\
             precision_recall_curve(y_test, y_score)
         f1 = metrics.f1_score(y_test, y_pred)
-        class_report = classification_report(y_test,y_pred)
-        
+        class_report = classification_report(y_test, y_pred)
+
         # http://scikit-learn.org/stable/modules/classes.html
         # create a dict to hold metrics for the current sliding window
-        perf_metrics = {'metrics_sw'+ \
-            str(list(train_test_sets.keys())[i][8]) : {
-            'acc' : acc,
-            'auc' : auc,
-            'precision' : precision,
-            'recall' : recall,
-            'f1' : f1,
-            'cr' : class_report, # classification report
-            'tpr' : tpr,
-            'fpr' : fpr}
-                  }
-        y_test_temp = {'y_test_' + \
-            str(list(train_test_sets.keys())[i][8]) : y_test}
-        y_pred_temp = {'y_pred_' + \
-            str(list(train_test_sets.keys())[i][8]) : y_pred}
-        y_score_temp = {'y_score_' + \
-            str(list(train_test_sets.keys())[i][8]) : y_score}
+        perf_metrics = {'metrics_sw' +
+                        str(list(train_test_sets.keys())[i][8]): {
+                            'acc': acc,
+                            'auc': auc,
+                            'precision': precision,
+                            'recall': recall,
+                            'f1': f1,
+                            'cr': class_report,
+                            'tpr': tpr,
+                            'fpr': fpr}
+                        }
+        y_test_temp = {'y_test_' +
+                       str(list(train_test_sets.keys())[i][8]): y_test}
+        y_pred_temp = {'y_pred_' +
+                       str(list(train_test_sets.keys())[i][8]): y_pred}
+        y_score_temp = {'y_score_' +
+                        str(list(train_test_sets.keys())[i][8]): y_score}
 
         all_metrics.update(perf_metrics)
         y_tests.update(y_test_temp)
         y_preds.update(y_pred_temp)
         y_scores.update(y_score_temp)
-    
+
     return all_metrics, y_tests, y_preds, y_scores
 
 
@@ -978,92 +1081,112 @@ def return_final_metrics_VC(train_test_sets, optimal_weights, rf_optimal,
     made up of the optimal rf, mlp and xgb models determined via model
     selection). Metrics are returned for each sliding window.
     Models are evaluated on the test sets.
-    
-    Input:
+
+    Parameters
+    ----------
         train_test_sets (dict of matrices): dict containing the train
             and test matrices for each sliding window.
-        optimal_weights ()
-        rf_optimal (dict of objects): 
-        mlp_optimal (dict of objects): 
-        xgb_optimal (dict of objects): 
+        optimal_weights (dict of dicts): the optimal weights for the voting
+            classifier for each sliding window. From tune_weights_ms().
+        rf_optimal (dict of objects): optimal RFs for each SW, from model
+            selection
+        mlp_optimal (dict of objects): optimal MLPs for each SW, from model
+            selection
+        xgb_optimal (dict of objects): optimal XGBs for each SW, from model
+            selection
 
         optimal_models (dict of objects): dict containing the optimal
             models for the respective classifier/asset combination.
 
-            
-    Output: A dictionary of dictionaries containing performance measures 
-        E.g. metrics_0 : acc, auc... , metrics_1 : auc, acc... ,
-             metrics_2 : auc, acc...
+    Returns
+    -------
+        all_metrics (dict of dicts): A dictionary of dictionaries containing
+            performance measures
+                E.g. metrics_0 : acc, auc... , metrics_1 : auc, acc... ,
+                     metrics_2 : auc, acc...
+        y_tests (dict of dicts): A dictionary of dictionaries containing test
+            set values
+        y_preds (dict of dicts): A dictionary of dictionaries containing preds
+        y_scores (dict of dicts): A dictionary of dictionaries containing
+            scores
     """
-    
+
     all_metrics = {}
     y_tests = {}
     y_preds = {}
-    y_scores = {}    
-    
-    for i in np.arange(0, len(train_test_sets), 4): # for each sliding window
-        
+    y_scores = {}
+
+    for i in np.arange(0, len(train_test_sets), 4):  # for each sliding window
+
         sliding_window = int(str(list(train_test_sets.keys())[i])[8])
-        clf1 = list(rf_optimal.values())[sliding_window] # RandomForestClassifier
-        clf2 = list(mlp_optimal.values())[sliding_window] # KerasClassifier
-        clf3 = list(xgb_optimal.values())[sliding_window] # XGBoostClassifier
-        
+        clf1 = list(rf_optimal.values())[sliding_window]  # RRFClassifier
+        clf2 = list(mlp_optimal.values())[sliding_window]  # KerasClassifier
+        clf3 = list(xgb_optimal.values())[sliding_window]  # XGBoostClassifier
+
         # define the relevant training and test sets, and model
         X_train = list(train_test_sets.values())[i]
         X_test = list(train_test_sets.values())[i+2]
         y_train = list(train_test_sets.values())[i+1]
         y_test = list(train_test_sets.values())[i+3]
-        
+
         # normalise the data since MLP is a voter
+        scaler = StandardScaler()
         scaler.fit(X_train)
         X_train = scaler.transform(X_train)
-        X_test = scaler.transform(X_test)        
-        
+        X_test = scaler.transform(X_test)
+
         # extract optimal weights for given sliding window
         vc_weights = list(optimal_weights.values())[sliding_window]
-               
-        
+
         eclf = VotingClassifier(estimators=[('rf', clf1),
                                             ('mlp', clf2),
                                             ('xgb', clf3)],
                                 voting='soft',
                                 weights=vc_weights,
                                 n_jobs=1)
-                
+
         # fit the model
         eclf.fit(X_train, y_train.values.ravel())
-        
+
         # make predictions
         y_pred = eclf.predict(X_test)
-        y_score = eclf.predict_proba(X_test)[:,1]
+        y_score = eclf.predict_proba(X_test)[:, 1]
 
         # output performance metrics
-        fpr, tpr, thresholds = metrics.roc_curve(y_test, y_score, drop_intermediate=False, pos_label=1)
-        acc = metrics.accuracy_score(y_test, y_pred) # accuracy
+        fpr, tpr, thresholds = metrics.roc_curve(
+            y_test,
+            y_score,
+            drop_intermediate=False,
+            pos_label=1)
+        acc = metrics.accuracy_score(y_test, y_pred)  # accuracy
         auc = metrics.auc(fpr, tpr)
-        precision, recall, thresholds = metrics.precision_recall_curve(y_test, y_score)
+        precision, recall, thresholds = metrics.precision_recall_curve(
+            y_test, y_score)
         f1 = metrics.f1_score(y_test, y_pred)
-        class_report = classification_report(y_test,y_pred)
-        
-        # http://scikit-learn.org/stable/modules/classes.html
-        perf_metrics = {'metrics_sw'+str(list(train_test_sets.keys())[i][8]) : {
-            'acc' : acc,
-            'auc' : auc,
-            'precision' : precision,
-            'recall' : recall,
-            'f1' : f1,
-            'cr' : class_report, # classification report
-            'tpr' : tpr,
-            'fpr' : fpr}
-                  }
+        class_report = classification_report(y_test, y_pred)
 
-        y_test_temp = {'y_test_' + str(list(train_test_sets.keys())[i][8]) : y_test}
-        y_pred_temp = {'y_pred_' + str(list(train_test_sets.keys())[i][8]) : y_pred}
-        y_score_temp = {'y_score_' + str(list(train_test_sets.keys())[i][8]) : y_score}
+        # http://scikit-learn.org/stable/modules/classes.html
+        perf_metrics = {'metrics_sw' +
+                        str(list(train_test_sets.keys())[i][8]): {
+                            'acc': acc,
+                            'auc': auc,
+                            'precision': precision,
+                            'recall': recall,
+                            'f1': f1,
+                            'cr': class_report,
+                            'tpr': tpr,
+                            'fpr': fpr}
+                        }
+
+        y_test_temp = {'y_test_' +
+                       str(list(train_test_sets.keys())[i][8]): y_test}
+        y_pred_temp = {'y_pred_' +
+                       str(list(train_test_sets.keys())[i][8]): y_pred}
+        y_score_temp = {'y_score_' +
+                        str(list(train_test_sets.keys())[i][8]): y_score}
 
         all_metrics.update(perf_metrics)
         y_tests.update(y_test_temp)
         y_preds.update(y_pred_temp)
         y_scores.update(y_score_temp)
-        
     return all_metrics, y_tests, y_preds, y_scores

@@ -28,7 +28,7 @@ from numpy import random
 import tensorflow as tf
 from xgboost.sklearn import XGBClassifier
 
-
+# 3 splits = 4 folds/sliding windows
 sets_spx = walkforward_split(
     X_spx,
     y_spx,
@@ -60,7 +60,8 @@ indices_spx = extract_imp_features(
 # configure the tensorflow session
 config = tf.compat.v1.ConfigProto(
     allow_soft_placement=True,
-    gpu_options=tf.compat.v1.GPUOptions(per_process_gpu_memory_fraction=1.0),
+    gpu_options=tf.compat.v1.GPUOptions(
+        per_process_gpu_memory_fraction=1.0),
     device_count={'GPU': 1},
     log_device_placement=True
 )
@@ -92,18 +93,12 @@ random_grid_xgb = {"n_estimators": randint(1, 1000),
                    "gamma": uniform(0.01, 0.2)}
 
 # Random Forest parameter grid
-# Number of trees in random forest
-n_estimators = randint(1, 5000)
-# Number of features to consider at every split
-max_features = ['auto', 'sqrt']
-# Maximum number of levels in tree
-max_depth = randint(5, 110)
-# Minimum number of samples required to split a node
-min_samples_split = randint(2, 10)
-# Minimum number of samples required at each leaf node
-min_samples_leaf = randint(1, 10)
-# Method of selecting samples for training each tree
-bootstrap = [True, False]
+n_estimators = randint(1, 5000)  # num trees
+max_features = ['auto', 'sqrt']  # feats to consider at each split
+max_depth = randint(5, 110)  # max num levels in tree
+min_samples_split = randint(2, 10)  # min num of samples req. to split node
+min_samples_leaf = randint(1, 10)  # min num samples req. at each leaf in node
+bootstrap = [True, False]  # Method of selecting samples for training each tree
 
 random_grid_rf = {
     'n_estimators': n_estimators,

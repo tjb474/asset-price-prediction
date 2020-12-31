@@ -149,20 +149,20 @@ xgb_spx_optimal_models, xgb_spx_optimal_params = model_selection(
 # RF
 rf_spx_val_metrics_fs, rf_y_tests_val_fs, \
     rf_y_preds_val_fs, rf_y_scores_val_fs = return_validation_metrics(
-        rf_spx_optimal_models,
-        sets_for_model_selection_spx)
+        train_test_sets=sets_for_model_selection_spx,
+        optimal_models=rf_spx_optimal_models)
 
 # MLP
 mlp_spx_val_metrics_fs, mlp_y_tests_val_fs, \
     mlp_y_preds_val_fs, mlp_y_scores_val_fs = return_validation_metrics(
-        mlp_spx_optimal_models,
-        sets_for_model_selection_spx)
+        train_test_sets=sets_for_model_selection_spx,
+        optimal_models=mlp_spx_optimal_models)
 
 # XGB
 xgb_spx_val_metrics_fs, xgb_y_tests_val_fs, \
     xgb_y_preds_val_fs, xgb_y_scores_val_fs = return_validation_metrics(
-        xgb_spx_optimal_models,
-        sets_for_model_selection_spx)
+        train_test_sets=sets_for_model_selection_spx,
+        optimal_models=xgb_spx_optimal_models)
 
 # Voting Classifier
 # tune the weights for the voting classifier (VC) for SPX
@@ -176,12 +176,12 @@ optimal_weights_spx = tune_weights_ms(
 # use optimal weight vector to run a VC model and return the validation metrics
 vc_spx_val_metrics_fs, vc_spx_y_tests_val_fs, \
     vc_spx_y_preds_val_fs, vc_spx_y_scores_val_fs = return_validation_metrics_VC(
-        sets_for_model_selection_spx,
-        sets_spx,
-        optimal_weights_spx,
-        rf_spx_optimal_models,
-        mlp_spx_optimal_models,
-        xgb_spx_optimal_models)
+        sets_model_selection=sets_for_model_selection_spx,
+        train_test_sets=sets_spx,
+        optimal_weights=optimal_weights_spx,
+        rf_optimal=rf_spx_optimal_models,
+        mlp_optimal=mlp_spx_optimal_models,
+        xgb_optimal=xgb_spx_optimal_models)
 
 # remove non-important features from train and test sets of SWs
 sets_spx = filter_imp_vars(sets=sets_spx, important_cols=indices_spx)

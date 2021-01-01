@@ -1,4 +1,3 @@
-from datetime import datetime
 from functions_modelling import (
     walkforward_split,
     model_selection_sets,
@@ -12,20 +11,11 @@ from functions_modelling import (
     return_final_metrics,
     return_final_metrics_VC
 )
-from keras.models import Sequential
-from keras.layers import Dense
-from keras.layers import Dropout
-from keras.wrappers.scikit_learn import KerasClassifier
-from keras.optimizers import SGD
-from keras.backend import set_session
 import pickle
-from scipy import stats
 from scipy.stats import randint
 from scipy.stats import uniform
 from scipy.stats import expon
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.ensemble import VotingClassifier
-from numpy import random
 import tensorflow as tf
 from xgboost.sklearn import XGBClassifier
 
@@ -175,13 +165,14 @@ optimal_weights_spx = tune_weights_ms(
 
 # use optimal weight vector to run a VC model and return the validation metrics
 vc_spx_val_metrics_fs, vc_spx_y_tests_val_fs, \
-    vc_spx_y_preds_val_fs, vc_spx_y_scores_val_fs = return_validation_metrics_VC(
-        sets_model_selection=sets_for_model_selection_spx,
-        train_test_sets=sets_spx,
-        optimal_weights=optimal_weights_spx,
-        rf_optimal=rf_spx_optimal_models,
-        mlp_optimal=mlp_spx_optimal_models,
-        xgb_optimal=xgb_spx_optimal_models)
+    vc_spx_y_preds_val_fs, \
+    vc_spx_y_scores_val_fs = return_validation_metrics_VC(
+            sets_model_selection=sets_for_model_selection_spx,
+            train_test_sets=sets_spx,
+            optimal_weights=optimal_weights_spx,
+            rf_optimal=rf_spx_optimal_models,
+            mlp_optimal=mlp_spx_optimal_models,
+            xgb_optimal=xgb_spx_optimal_models)
 
 # remove non-important features from train and test sets of SWs
 sets_spx = filter_imp_vars(sets=sets_spx, important_cols=indices_spx)
@@ -217,10 +208,22 @@ vc_spx_all_metrics_fs, vc_spx_y_tests_fs, \
         mlp_optimal=mlp_spx_optimal_models,
         xgb_optimal=xgb_spx_optimal_models)
 
-# save the models
-filename = 'rf_spx_optimal_models_fs.sav'
-pickle.dump(rf_spx_optimal_models, open(filename, 'wb'))
-filename = 'xgb_spx_optimal_models_fs.sav'
-pickle.dump(xgb_spx_optimal_models, open(filename, 'wb'))
-filename = 'vc_spx_optimal_models_fs.sav'
-pickle.dump(vc_spx_optimal_models, open(filename, 'wb'))
+# save the optimal models, or parameters for models
+models = [rf_spx_optimal_models, mlp_spx_optimal_models,
+          xgb_spx_optimal_models, optimal_weights_spx]
+
+model_paths = ["rf_spx_optimal_models_fs.sav", "mlp_spx_optimal_models_fs.sav",
+               "xgb_spx_optimal_models_fs.sav", "vc_spx_optimal_weights.sav"]
+
+for i, m in enumerate(models):
+    pickle.dump(m, open(model_paths[i], 'wb'))
+
+# save performance metrics
+metrics = [rf_spx_all_metrics_fs, mlp_spx_all_metrics_fs,
+           xgb_spx_all_metrics_fs, vc_spx_all_metrics_fs]
+
+metrics_paths = ["rf_metrics.sav", "mlp_metrics.sav",
+                 "xgb_metrics.sav", "vc_metrics.sav"]
+
+for i, m in enumerate(metrics):
+    pickle.dump(m, open(metrics_paths[i], 'wb'))

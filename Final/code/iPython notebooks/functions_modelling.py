@@ -7,14 +7,11 @@ from keras.optimizers import SGD
 from keras import backend as K
 import numpy as np
 import pandas as pd
-import pickle
 from sklearn import metrics
 from sklearn.metrics import (
-    confusion_matrix,
-    classification_report,
-    precision_recall_curve)
+    classification_report
+)
 from sklearn.model_selection import (
-    cross_val_score,
     RandomizedSearchCV,
     PredefinedSplit,
     TimeSeriesSplit
